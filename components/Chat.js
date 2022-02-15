@@ -14,6 +14,7 @@ export default class Chat extends React.Component {
   componentDidMount() {
 
     let name = this.props.route.params.name;
+    this.props.navigation.setOptions({ title: name });
 
     this.setState({
       messages: [
@@ -24,7 +25,7 @@ export default class Chat extends React.Component {
           user: {
             _id: 2,
             name: 'React Native',
-            avatar: 'https://placeimage.com/140/140/any'
+            avatar: 'https://placeimg.com/140/140/any'
           },
         },
         {
