@@ -13,6 +13,7 @@ export default class Chat extends React.Component {
     super();
     this.state = {
       messages: [],
+      isConnected: false,
       uid: 0,
       user: {
         _id: '',
@@ -68,41 +69,44 @@ export default class Chat extends React.Component {
 
   //function gets called after the Chat component mounts
   componentDidMount() {
-
     let name = this.props.route.params.name;
     this.props.navigation.setOptions({ title: name });
 
     //Check if the user is off-or online
     NetInfo.fetch().then((connection) => {
       if (connection.isConnected) {
-        console.log('online');
+        this.setState({ isConnected: true });
+
+        //authentication
+        this.authUnsubscribe = firebase.auth().onAuthStateChanged((user) => {
+          if (!user) {
+            firebase.auth().signInAnonymously();
+          }
+
+          //update user state with currently active user data
+          this.setState({
+            uid: user.uid,
+            messages: [],
+            user: {
+              _id: user.uid,
+              name: name,
+              avatar: "https://placeimg.com/140/140/any",
+            },
+          });
+          //listener for collection updates
+          this.unsubscribe = this.referenceChatMessages
+            .orderBy("createdAt", "desc")
+            .onSnapshot(this.onCollectionUpdate);
+        });
+        this.refMsgUser = firebase
+          .firestore()
+          .collection("messages")
+          .where("uid", "==", this.state.uid);
       } else {
-        console.log('offline');
+        this.getMessages();
+        this.renderInputToolbar();
       }
     });
-
-    //authentication
-    this.authUnsubscribe = firebase.auth().onAuthStateChanged((user) => {
-      if (!user) {
-        firebase.auth().signInAnonymously();
-      }
-
-      //update user state with currently active user data
-      this.setState({
-        uid: user.uid,
-        messages: [],
-        user: {
-          _id: user.uid,
-          name: name,
-          avatar: "https://placeimg.com/140/140/any"
-        }
-      });
-      //listener for collection updates
-      this.unsubscribe = this.referenceChatMessages
-        .orderBy('createdAt', 'desc')
-        .onSnapshot(this.onCollectionUpdate);
-    });
-    this.refMsgUser = firebase.firestore().collection('messages').where('uid', '==', this.state.uid);
   }
 
   //adding a new message to the database collection
@@ -152,10 +156,12 @@ export default class Chat extends React.Component {
   }
 
   componentWillUnmount() {
-    // stops listening to authentication
-    this.authUnsubscribe();
-    // stop listening for changes
-    this.unsubscribe();
+    if (this.state.isConnected) {
+      // stops listening to authentication
+      this.authUnsubscribe();
+      // stop listening for changes
+      this.unsubscribe();
+    }
   }
 
 
@@ -186,9 +192,9 @@ export default class Chat extends React.Component {
     return (
       <View style={{ flex: 1, backgroundColor: bgColor }}>
         <GiftedChat
-
           messages={this.state.messages}
           onSend={(messages) => this.onSend(messages)}
+          renderInputToolbar={this.renderInputToolbar.bind(this)}
           user={{
             _id: 1,
             name: this.state.name,
