@@ -1,9 +1,11 @@
 import React from "react";
-import { GiftedChat } from "react-native-gifted-chat";
+import { GiftedChat, InputToolbar } from "react-native-gifted-chat";
 import { View, Platform, KeyboardAvoidingView } from 'react-native';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 
 
 export default class Chat extends React.Component {
@@ -11,7 +13,8 @@ export default class Chat extends React.Component {
     super();
     this.state = {
       messages: [],
-      uid: {
+      uid: 0,
+      user: {
         _id: '',
         name: '',
         avatar: '',
@@ -31,6 +34,36 @@ export default class Chat extends React.Component {
     }
     //reference to the Firestore messages collection
     this.referenceChatMessages = firebase.firestore().collection('messages');
+    this.refMsgUser = null;
+  }
+
+
+  async saveMessages() {
+    try {
+      await AsyncStorage.setItem('messages', JSON.stringify(this.state.messages));
+    } catch (error) {
+      console.log(error.message);
+    }
+  }
+
+  async getMessages() {
+    let messages = '';
+    try {
+      messages = await AsyncStorage.getItem('messages') || [];
+      this.setState({
+        messages: JSON.parse(messages)
+      });
+    } catch (error) {
+      console.log(error.message);
+    }
+  };
+
+  async deleteMessages() {
+    try {
+      await AsyncStorage.removeItem('messages');
+    } catch (error) {
+      console.log(error.message);
+    }
   }
 
   //function gets called after the Chat component mounts
@@ -38,6 +71,15 @@ export default class Chat extends React.Component {
 
     let name = this.props.route.params.name;
     this.props.navigation.setOptions({ title: name });
+
+    //Check if the user is off-or online
+    NetInfo.fetch().then((connection) => {
+      if (connection.isConnected) {
+        console.log('online');
+      } else {
+        console.log('offline');
+      }
+    });
 
     //authentication
     this.authUnsubscribe = firebase.auth().onAuthStateChanged((user) => {
@@ -60,6 +102,20 @@ export default class Chat extends React.Component {
         .orderBy('createdAt', 'desc')
         .onSnapshot(this.onCollectionUpdate);
     });
+    this.refMsgUser = firebase.firestore().collection('messages').where('uid', '==', this.state.uid);
+  }
+
+  //adding a new message to the database collection
+  addMessage() {
+    const message = this.state.messages[0];
+
+    this.referenceChatMessages.add({
+      _id: message._id,
+      text: message.text || '',
+      createdAt: message.createdAt,
+      user: this.state.user
+    });
+    this.getMessages();
   }
 
   onCollectionUpdate = (querySnapshot) => {
@@ -84,17 +140,6 @@ export default class Chat extends React.Component {
     });
   };
 
-  //adding a new message to the database collection
-  addMessage() {
-    const message = this.state.messages[0];
-
-    this.referenceChatMessages.add({
-      _id: message._id,
-      text: message.text,
-      createdAt: message.createdAt,
-      user: this.state.user
-    });
-  }
 
 
   //function will be called once user sends a message
@@ -102,7 +147,7 @@ export default class Chat extends React.Component {
     this.setState((previousState) => ({
       messages: GiftedChat.append(previousState.messages, messages),
     }), () => {
-      this.addMessage();
+      this.saveMessages();
     })
   }
 
@@ -128,6 +173,12 @@ export default class Chat extends React.Component {
     );
   }
 
+  renderInputToolbar(props) {
+    if (this.state.isConnected == false) {
+    } else {
+      return <InputToolbar {...props} />
+    }
+  }
   render() {
 
     const { bgColor } = this.props.route.params;
@@ -135,13 +186,14 @@ export default class Chat extends React.Component {
     return (
       <View style={{ flex: 1, backgroundColor: bgColor }}>
         <GiftedChat
+
           messages={this.state.messages}
           onSend={(messages) => this.onSend(messages)}
-        // user={{
-        //   _id: this.state.user._id,
-        //   name: this.state.name,
-        //   avatar: this.state.user.avatar
-        // }}
+          user={{
+            _id: 1,
+            name: this.state.name,
+            avatar: this.state.user.avatar
+          }}
         />
         {Platform.OS === "android" ? (
           <KeyboardAvoidingView behavior="height" />
