@@ -30,7 +30,7 @@ export default class Chat extends React.Component {
       });
     }
     //reference to the Firestore messages collection
-    this.referencechatMessages = firebase.firestore().collection('messages');
+    this.referenceChatMessages = firebase.firestore().collection('messages');
   }
 
   //function gets called after the Chat component mounts
@@ -40,34 +40,33 @@ export default class Chat extends React.Component {
     this.props.navigation.setOptions({ title: name });
 
     //authentication
-    this.authUnsubscribe = firebase.auth().onAuthStateChanged(async (user) => {
+    this.authUnsubscribe = firebase.auth().onAuthStateChanged((user) => {
       if (!user) {
-        await firebase.auth().signInAnonymously();
+        firebase.auth().signInAnonymously();
       }
 
-      //update user state with currently active user data      
+      //update user state with currently active user data
       this.setState({
         uid: user.uid,
         messages: [],
         user: {
           _id: user.uid,
           name: name,
-          avatar: 'https://placeimg.com/140/140/any'
+          avatar: "https://placeimg.com/140/140/any"
         }
       });
-
       //listener for collection updates
       this.unsubscribe = this.referenceChatMessages
-        .orderBy("createdAt", "desc")
+        .orderBy('createdAt', 'desc')
         .onSnapshot(this.onCollectionUpdate);
-    })
+    });
   }
 
   onCollectionUpdate = (querySnapshot) => {
     const messages = [];
-    //go thorugh each document
+    // go through each document
     querySnapshot.forEach((doc) => {
-      //get the QueryDocument's data
+      // get the QueryDocumentSnapshot's data
       let data = doc.data();
       messages.push({
         _id: data._id,
@@ -88,19 +87,19 @@ export default class Chat extends React.Component {
   //adding a new message to the database collection
   addMessage() {
     const message = this.state.messages[0];
-    // add a new message to the collection
-    this.referencechatMessages.add({
+
+    this.referenceChatMessages.add({
       _id: message._id,
       text: message.text,
       createdAt: message.createdAt,
-      user: this.state.user,
-    })
+      user: this.state.user
+    });
   }
 
 
   //function will be called once user sends a message
   onSend(messages = []) {
-    this.setState(previousState => ({
+    this.setState((previousState) => ({
       messages: GiftedChat.append(previousState.messages, messages),
     }), () => {
       this.addMessage();
