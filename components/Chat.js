@@ -1,9 +1,14 @@
 import React from "react";
-import { GiftedChat } from "react-native-gifted-chat";
+import { GiftedChat, InputToolbar, Bubble } from "react-native-gifted-chat";
 import { View, Platform, KeyboardAvoidingView } from 'react-native';
+import MapView from 'react-native-maps';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
+import 'firebase/compat/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
+import CustomActions from "./CustomActions";
 
 
 export default class Chat extends React.Component {
@@ -11,11 +16,15 @@ export default class Chat extends React.Component {
     super();
     this.state = {
       messages: [],
-      uid: {
+      isConnected: false,
+      uid: 0,
+      user: {
         _id: '',
         name: '',
         avatar: '',
       },
+      image: null,
+      location: null,
     };
 
     //initializing firebase
@@ -31,36 +40,108 @@ export default class Chat extends React.Component {
     }
     //reference to the Firestore messages collection
     this.referenceChatMessages = firebase.firestore().collection('messages');
+    this.refMsgUser = null;
+  }
+
+  async getMessages() {
+    let messages = '';
+    try {
+      messages = await AsyncStorage.getItem('messages') || [];
+      this.setState({
+        messages: JSON.parse(messages)
+      });
+    } catch (error) {
+      console.log(error.message);
+    }
+  };
+
+  async saveMessages() {
+    try {
+      await AsyncStorage.setItem('messages', JSON.stringify(this.state.messages));
+    } catch (error) {
+      console.log(error.message);
+    }
+  }
+
+
+
+  async deleteMessages() {
+    try {
+      await AsyncStorage.removeItem('messages');
+    } catch (error) {
+      console.log(error.message);
+    }
   }
 
   //function gets called after the Chat component mounts
   componentDidMount() {
-
-    let name = this.props.route.params.name;
+    //set name to name selected on start page
+    let { name } = this.props.route.params;
+    // Adds the name to top of screen
     this.props.navigation.setOptions({ title: name });
 
-    //authentication
-    this.authUnsubscribe = firebase.auth().onAuthStateChanged((user) => {
-      if (!user) {
-        firebase.auth().signInAnonymously();
-      }
+    //Check if the user is off- or online
+    NetInfo.fetch().then((connection) => {
+      if (connection.isConnected) {
+        this.setState({ isConnected: true });
+        console.log("online");
+        // listens for updates in the collection
+        this.unsubscribe = this.referenceChatMessages
+          .orderBy("createdAt", "desc")
+          .onSnapshot(this.onCollectionUpdate);
 
-      //update user state with currently active user data
-      this.setState({
-        uid: user.uid,
-        messages: [],
-        user: {
-          _id: user.uid,
-          name: name,
-          avatar: "https://placeimg.com/140/140/any"
-        }
-      });
-      //listener for collection updates
-      this.unsubscribe = this.referenceChatMessages
-        .orderBy('createdAt', 'desc')
-        .onSnapshot(this.onCollectionUpdate);
+        //listen to authentication events, sign in anonymously
+        this.authUnsubscribe = firebase
+          .auth()
+          .onAuthStateChanged(async (user) => {
+            if (!user) {
+              return await firebase.auth().signInAnonymously();
+            }
+
+            //update user state with currently active user data
+            this.setState({
+              uid: user.uid,
+              messages: [],
+              user: {
+                _id: user.uid,
+                name: name,
+                avatar: "https://placeimg.com/140/140/any",
+              },
+            });
+
+            //referencing messages of current user
+            this.refMsgsUser = firebase
+              .firestore()
+              .collection("messages")
+              .where("uid", "==", this.state.uid);
+          });
+        //save messages when online
+        this.saveMessages();
+      } else {
+        // the user is offline
+        this.setState({ isConnected: false });
+        console.log("offline");
+        //retrieve chat from asyncstorage
+        this.getMessages();
+      }
     });
   }
+
+  //adding a new message to the database collection
+  addMessage() {
+    const message = this.state.messages[0];
+
+    this.referenceChatMessages.add({
+      _id: message._id,
+      text: message.text || '',
+      createdAt: message.createdAt,
+      user: message.user,
+      image: message.image || null,
+      location: message.location || null,
+    });
+  }
+
+
 
   onCollectionUpdate = (querySnapshot) => {
     const messages = [];
@@ -72,29 +153,18 @@ export default class Chat extends React.Component {
         _id: data._id,
         text: data.text,
         createdAt: data.createdAt.toDate(),
-        user: {
-          _id: data.user._id,
-          name: data.user.name,
-          avatar: data.user.avatar
-        }
+        user: data.user,
+        image: data.image || null,
+        location: data.location || null,
       });
     });
     this.setState({
       messages: messages
     });
+    this.saveMessages();
   };
 
-  //adding a new message to the database collection
-  addMessage() {
-    const message = this.state.messages[0];
 
-    this.referenceChatMessages.add({
-      _id: message._id,
-      text: message.text,
-      createdAt: message.createdAt,
-      user: this.state.user
-    });
-  }
 
 
   //function will be called once user sends a message
@@ -102,16 +172,22 @@ export default class Chat extends React.Component {
     this.setState((previousState) => ({
       messages: GiftedChat.append(previousState.messages, messages),
     }), () => {
-      this.addMessage();
-    })
+      // this.addMessage();
+      this.saveMessages();
+    }
+    );
   }
 
   componentWillUnmount() {
-    // stops listening to authentication
-    this.authUnsubscribe();
-    // stop listening for changes
-    this.unsubscribe();
+    if (this.state.isConnected) {
+      // stops listening to authentication
+      this.authUnsubscribe();
+      // stop listening for changes
+      this.unsubscribe();
+    }
   }
+
+
 
 
 
@@ -128,6 +204,42 @@ export default class Chat extends React.Component {
     );
   }
 
+  // hides inputbar when offline
+  renderInputToolbar(props) {
+    if (this.state.isConnected == false) {
+    } else {
+      return <InputToolbar {...props} />
+    }
+  }
+
+  //displays the communication features
+  renderCustomActions = (props) => <CustomActions {...props} />
+
+  // custom map view
+  renderCustomView(props) {
+    const { currentMessage } = props;
+    if (currentMessage.location) {
+      return (
+        <MapView
+          style={{
+            width: 150,
+            height: 100,
+            borderRadius: 13,
+            margin: 3
+          }}
+          region={{
+            latitude: currentMessage.location.latitude,
+            longitude: currentMessage.location.longitude,
+            latitudeDelta: 0.0922,
+            longitudeDelta: 0.0421,
+          }}
+        />
+      );
+    }
+    return null;
+  }
+
+  // render components
   render() {
 
     const { bgColor } = this.props.route.params;
@@ -136,12 +248,16 @@ export default class Chat extends React.Component {
       <View style={{ flex: 1, backgroundColor: bgColor }}>
         <GiftedChat
           messages={this.state.messages}
+          isConnected={this.state.isConnected}
           onSend={(messages) => this.onSend(messages)}
-        // user={{
-        //   _id: this.state.user._id,
-        //   name: this.state.name,
-        //   avatar: this.state.user.avatar
-        // }}
+          renderInputToolbar={this.renderInputToolbar.bind(this)}
+          renderActions={this.renderCustomActions}
+          renderCustomView={this.renderCustomView}
+          user={{
+            _id: 1,
+            name: this.state.name,
+            avatar: this.state.user.avatar
+          }}
         />
         {Platform.OS === "android" ? (
           <KeyboardAvoidingView behavior="height" />

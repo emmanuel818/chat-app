@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 //import screens
 import Start from './components/Start';
 import Chat from './components/Chat';
+import CustomActions from './components/CustomActions';
 
 //import react native gesture handler
 import 'react-native-gesture-handler';
@@ -21,6 +22,10 @@ const Stack = createStackNavigator();
 
 
 export default class ChatApp extends React.Component {
+
+  renderCustomActions = (props) => {
+    return <CustomActions {...props} />
+  };
 
   render() {
     return (
