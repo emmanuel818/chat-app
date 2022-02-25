@@ -40,8 +40,32 @@ export default class Chat extends React.Component {
     }
     //reference to the Firestore messages collection
     this.referenceChatMessages = firebase.firestore().collection('messages');
-    this.refMsgUser = null;
   }
+
+  onCollectionUpdate = (querySnapshot) => {
+    const messages = [];
+    // go through each document
+    querySnapshot.forEach((doc) => {
+      // get the QueryDocumentSnapshot's data
+      let data = doc.data();
+      messages.push({
+        _id: data._id,
+        text: data.text,
+        createdAt: data.createdAt.toDate(),
+        user: {
+          _id: data.user._id,
+          name: data.user.name,
+          avatar: data.user.avatar,
+        },
+        image: data.image || null,
+        location: data.location || null,
+      });
+    });
+    this.setState({
+      messages: messages
+    });
+    this.saveMessages();
+  };
 
   async getMessages() {
     let messages = '';
@@ -83,7 +107,6 @@ export default class Chat extends React.Component {
     //Check if the user is off- or online
     NetInfo.fetch().then((connection) => {
       if (connection.isConnected) {
-        this.setState({ isConnected: true });
         // listens for updates in the collection
         this.unsubscribe = this.referenceChatMessages
           .orderBy("createdAt", "desc")
@@ -106,24 +129,27 @@ export default class Chat extends React.Component {
                 name: name,
                 avatar: "https://placeimg.com/140/140/any",
               },
+              isConnected: true,
             });
-
-            //referencing messages of current user
-            this.refMsgsUser = firebase
-              .firestore()
-              .collection("messages")
-              .where("uid", "==", this.state.uid);
           });
         //save messages when online
         this.saveMessages();
       } else {
         // the user is offline
         this.setState({ isConnected: false });
-        console.log("offline");
         //retrieve chat from asyncstorage
         this.getMessages();
       }
     });
+  }
+
+  componentWillUnmount() {
+    if (this.state.isConnected) {
+      // stops listening to authentication
+      this.authUnsubscribe();
+      // stop listening for changes
+      this.unsubscribe();
+    }
   }
 
   //adding a new message to the database collection
@@ -134,36 +160,11 @@ export default class Chat extends React.Component {
       _id: message._id,
       text: message.text || '',
       createdAt: message.createdAt,
-      user: message.user,
+      user: this.state.user,
       image: message.image || null,
       location: message.location || null,
     });
   }
-
-
-
-  onCollectionUpdate = (querySnapshot) => {
-    const messages = [];
-    // go through each document
-    querySnapshot.forEach((doc) => {
-      // get the QueryDocumentSnapshot's data
-      let data = doc.data();
-      messages.push({
-        _id: data._id,
-        text: data.text,
-        createdAt: data.createdAt.toDate(),
-        user: data.user,
-        image: data.image || null,
-        location: data.location || null,
-      });
-    });
-    this.setState({
-      messages: messages
-    });
-    this.saveMessages();
-  };
-
-
 
 
   //function will be called once user sends a message
@@ -177,14 +178,7 @@ export default class Chat extends React.Component {
     );
   }
 
-  componentWillUnmount() {
-    if (this.state.isConnected) {
-      // stops listening to authentication
-      this.authUnsubscribe();
-      // stop listening for changes
-      this.unsubscribe();
-    }
-  }
+
 
 
 
@@ -249,11 +243,12 @@ export default class Chat extends React.Component {
           messages={this.state.messages}
           isConnected={this.state.isConnected}
           onSend={(messages) => this.onSend(messages)}
+          renderBubble={this.renderBubble.bind(this)}
           renderInputToolbar={this.renderInputToolbar.bind(this)}
           renderActions={this.renderCustomActions}
           renderCustomView={this.renderCustomView}
           user={{
-            _id: 1,
+            _id: this.state.user._id,
             name: this.state.name,
             avatar: this.state.user.avatar
           }}

@@ -66,8 +66,8 @@ export default class CustomActions extends React.Component {
         const result = await Location.getCurrentPositionAsync(
           {}
         ).catch((error) => console.log(error));
-        const longitude = JSON.stringify(result.coords.longitude);
-        const altitude = JSON.stringify(result.coords.latitude);
+        // const longitude = JSON.stringify(result.coords.longitude);
+        // const latitude = JSON.stringify(result.coords.latitude);
         if (result) {
           this.props.onSend({
             location: {
