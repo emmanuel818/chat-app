@@ -84,7 +84,6 @@ export default class Chat extends React.Component {
     NetInfo.fetch().then((connection) => {
       if (connection.isConnected) {
         this.setState({ isConnected: true });
-        console.log("online");
         // listens for updates in the collection
         this.unsubscribe = this.referenceChatMessages
           .orderBy("createdAt", "desc")
@@ -172,7 +171,7 @@ export default class Chat extends React.Component {
     this.setState((previousState) => ({
       messages: GiftedChat.append(previousState.messages, messages),
     }), () => {
-      // this.addMessage();
+      this.addMessage();
       this.saveMessages();
     }
     );
